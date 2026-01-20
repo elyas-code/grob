@@ -1,0 +1,3 @@
+[workspace]
+members = ["engine", "browser"]
+resolver = "3"
