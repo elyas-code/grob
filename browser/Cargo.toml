@@ -1,7 +1,7 @@
 [package]
 name = "grob_browser"
 version = "0.0.1"
-edition = "2024"
+edition = "2021"
 
 [dependencies]
 engine = { path = "../engine", package = "grob_engine" }
@@ -10,3 +10,7 @@ winit = "0.28"
 ab_glyph = "0.2"
 glyph_brush = "0.7.12"
 rusttype = "0.9.3"
+font-loader = "0.1"
+reqwest = { version = "0.11", features = ["stream", "blocking"] }
+tokio = { version = "1", features = ["rt", "macros"] }
+image = "0.24"

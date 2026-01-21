@@ -5,4 +5,5 @@ pub mod layout;
 pub mod paint;
 pub mod js;
 pub mod net;
+pub mod font;
 pub mod platform;
