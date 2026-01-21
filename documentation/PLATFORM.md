@@ -269,8 +269,8 @@ Support multiple character encodings:
 
 **Tested Platforms**:
 - Windows 10/11
+- Ubuntu 20.04+
 - macOS 10.15+ (Planned)
-- Ubuntu 20.04+ (Planned)
 
 **Minimum Requirements**:
 - 64-bit processor
