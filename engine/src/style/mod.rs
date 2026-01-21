@@ -29,12 +29,12 @@ impl Style {
                 if s.ends_with("px") {
                     s.trim_end_matches("px").parse().ok()
                 } else if s.ends_with("em") {
-                    s.trim_end_matches("em").parse::<f32>().ok().map(|e| e * 16.0)
+                    s.trim_end_matches("em").parse::<f32>().ok().map(|e| e * 24.0)
                 } else {
                     s.parse().ok()
                 }
             })
-            .unwrap_or(16.0)
+            .unwrap_or(24.0)
     }
 
     pub fn get_color(&self) -> (u8, u8, u8) {
@@ -63,6 +63,22 @@ impl Style {
         self.get_text_decoration()
             .map(|d| d.contains(decoration))
             .unwrap_or(false)
+    }
+    
+    pub fn get_width_percentage(&self) -> Option<f32> {
+        self.get("width")
+            .and_then(|s| {
+                let s = s.trim();
+                if s.ends_with("vw") {
+                    // Viewport width percentage
+                    s.trim_end_matches("vw").parse::<f32>().ok().map(|v| v / 100.0)
+                } else if s.ends_with("%") {
+                    // Percentage
+                    s.trim_end_matches("%").parse::<f32>().ok().map(|v| v / 100.0)
+                } else {
+                    None
+                }
+            })
     }
 }
 

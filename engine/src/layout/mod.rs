@@ -23,12 +23,35 @@ pub struct LayoutBox {
     pub dimensions: Dimensions,
     pub style: Style,
     pub children: Vec<LayoutBox>,
+    pub text_content: Option<String>,
 }
 
 pub struct LayoutEngine;
 
 impl LayoutEngine {
-    pub fn new() -> Self { Self }
+    pub fn new() -> Self {
+        Self
+    }
+    
+    /// Measure the width of a space character
+    /// Uses heuristic: space is typically ~25% of font-size for most fonts
+    /// In future, could query actual font metrics
+    fn get_space_width(&self, font_size: f32) -> f32 {
+        // Empirically, space width is ~25% of font-size
+        // This is more accurate than the previous 0.3 * font_size
+        font_size * 0.25
+    }
+    
+    fn measure_word_width(
+        &self,
+        word: &str,
+        font_size: f32,
+        _font_family: &str,
+    ) -> f32 {
+        // Heuristic: ~0.55 * font_size per character
+        // More accurate than previous 0.6, accounts for proportional fonts
+        word.len() as f32 * font_size * 0.55
+    }
 
     pub fn layout_with_viewport(&self, dom: &Dom, stylesheet: &Stylesheet, viewport_width: f32) -> LayoutBox {
         let root_id = dom.root();
@@ -57,10 +80,21 @@ impl LayoutEngine {
         exclude_tags: &[&str],
     ) -> LayoutBox {
         let style = stylesheet.compute_style(dom, node_id);
+        
+        // Apply width constraints from CSS if specified
+        let effective_width = if let Some(width_fraction) = style.get_width_percentage() {
+            (width * width_fraction).max(width * 0.1) // At least 10% of available width
+        } else {
+            width
+        };
+        
         let mut children_boxes = Vec::new();
         let mut current_y = y;
+        let children = dom.nodes[node_id].children.clone();
+        let mut child_idx = 0;
 
-        for &child_id in &dom.nodes[node_id].children {
+        while child_idx < children.len() {
+            let child_id = children[child_idx];
             let should_exclude = if let crate::dom::NodeType::Element(el) = &dom.nodes[child_id].node_type {
                 exclude_tags.contains(&el.tag_name.as_str())
             } else {
@@ -68,21 +102,23 @@ impl LayoutEngine {
             };
 
             if should_exclude {
+                child_idx += 1;
                 continue;
             }
 
             if self.is_block_element(dom, child_id) {
                 // Block element
-                let child_box = self.layout_block_container(dom, stylesheet, child_id, x, current_y, width, exclude_tags);
+                let child_box = self.layout_block_container(dom, stylesheet, child_id, x, current_y, effective_width, exclude_tags);
                 current_y += child_box.dimensions.height;
                 children_boxes.push(child_box);
+                child_idx += 1;
             } else {
                 // Inline or text - collect all consecutive inline/text children
                 let mut inline_children = vec![child_id];
-                let mut child_idx = dom.nodes[node_id].children.iter().position(|&c| c == child_id).unwrap() + 1;
+                child_idx += 1;
                 
-                while child_idx < dom.nodes[node_id].children.len() {
-                    let next_id = dom.nodes[node_id].children[child_idx];
+                while child_idx < children.len() {
+                    let next_id = children[child_idx];
                     let is_excluded = if let crate::dom::NodeType::Element(el) = &dom.nodes[next_id].node_type {
                         exclude_tags.contains(&el.tag_name.as_str())
                     } else {
@@ -102,14 +138,9 @@ impl LayoutEngine {
                 }
 
                 // Layout inline children as a line
-                let line_box = self.layout_inline_line(dom, stylesheet, &inline_children, x, current_y, width, exclude_tags);
+                let line_box = self.layout_inline_line(dom, stylesheet, &inline_children, x, current_y, effective_width, exclude_tags);
                 current_y += line_box.dimensions.height;
                 children_boxes.push(line_box);
-                
-                // Skip the children we already processed
-                let _last_inline = inline_children.last().unwrap();
-                // Find the position in loop - this is tricky, so we'll just break and continue naturally
-                break;
             }
         }
 
@@ -117,9 +148,10 @@ impl LayoutEngine {
         LayoutBox {
             node_id,
             box_type: BoxType::Block,
-            dimensions: Dimensions { x, y, width, height: total_height.max(16.0) },
+            dimensions: Dimensions { x, y, width: effective_width, height: total_height.max(16.0) },
             style,
             children: children_boxes,
+            text_content: None,
         }
     }
 
@@ -143,14 +175,18 @@ impl LayoutEngine {
             if let crate::dom::NodeType::Text(text) = &dom.nodes[child_id].node_type {
                 let style = stylesheet.compute_style(dom, child_id);
                 let font_size = style.get_font_size();
+                let font_family = style.get_font_family();
                 let line_height = font_size * 1.2;
                 
-                // Split text into words (by whitespace)
+                // Split text into words (by whitespace - this collapses multiple spaces)
+                // Correct behavior for CSS white-space: normal (the default)
                 let words: Vec<&str> = text.split_whitespace().collect();
                 
                 for word in words {
-                    // Calculate word width
-                    let word_width = word.len() as f32 * font_size * 0.6;
+                    // Measure word width using heuristic
+                    let word_width = self.measure_word_width(&word, font_size, &font_family);
+                    // Space width is now better calibrated (~25% vs previous 30%)
+                    let space_width = self.get_space_width(font_size);
                     
                     // Check if word fits on current line
                     if current_x + word_width > x + width && current_x > x {
@@ -168,13 +204,13 @@ impl LayoutEngine {
                         dimensions: Dimensions { x: current_x, y, width: word_width, height: line_height },
                         style: style.clone(),
                         children: vec![],
+                        text_content: Some(word.to_string()),
                     };
                     
                     max_height = max_height.max(line_height);
                     current_x += word_width;
                     
-                    // Add spacing after word (single space width)
-                    let space_width = font_size * 0.6;
+                    // Add spacing after word
                     if current_x + space_width <= x + width {
                         current_x += space_width;
                     }
@@ -221,6 +257,7 @@ impl LayoutEngine {
             dimensions: Dimensions { x, y, width, height: total_height },
             style: Style::new(),
             children: line_boxes,
+            text_content: None,
         }
     }
 
@@ -250,6 +287,7 @@ impl LayoutEngine {
                         dimensions: Dimensions { x, y, width: 100.0, height: 80.0 },
                         style,
                         children: vec![],
+                        text_content: None,
                     }
                 } else {
                     let mut children_boxes = Vec::new();
@@ -277,6 +315,7 @@ impl LayoutEngine {
                         dimensions: Dimensions { x, y, width: current_x - x, height: max_height },
                         style,
                         children: children_boxes,
+                        text_content: None,
                     }
                 }
             }
@@ -304,6 +343,7 @@ impl LayoutEngine {
             dimensions: Dimensions { x, y, width: text_width, height: line_height },
             style: style.clone(),
             children: vec![],
+            text_content: Some(text.to_string()),
         }
     }
 }

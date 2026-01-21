@@ -110,19 +110,42 @@ impl FontManager {
     fn load_linux_font(&self, family: &str) -> Option<Vec<u8>> {
         use std::fs;
 
+        let home_fonts = format!("{}/.local/share/fonts", std::env::var("HOME").ok()?);
         let fonts_paths = vec![
             "/usr/share/fonts/truetype",
             "/usr/local/share/fonts/truetype",
-            format!("{}/.local/share/fonts", std::env::var("HOME").ok()?).as_str(),
+            &home_fonts,
         ];
 
+        // Build a list of font filenames to try, with fallbacks
         let filenames = match family.to_lowercase().as_str() {
-            "times new roman" | "times" => vec!["liberation-serif/LiberationSerif-Regular.ttf"],
-            "arial" => vec!["liberation-sans/LiberationSans-Regular.ttf"],
-            "georgia" => vec!["liberation-serif/LiberationSerif-Regular.ttf"],
-            "verdana" => vec!["liberation-sans/LiberationSans-Regular.ttf"],
-            "courier new" | "courier" => vec!["liberation-mono/LiberationMono-Regular.ttf"],
-            _ => return None,
+            "times new roman" | "times" | "serif" => vec![
+                "liberation/LiberationSerif-Regular.ttf",
+                "dejavu/DejaVuSerif.ttf",
+            ],
+            "arial" | "sans-serif" | "system-ui" | "sans" => vec![
+                "liberation/LiberationSans-Regular.ttf",
+                "dejavu/DejaVuSans.ttf",
+                "ubuntu/Ubuntu-Regular.ttf",
+                "noto/NotoSans-Regular.ttf",
+            ],
+            "georgia" => vec![
+                "liberation/LiberationSerif-Regular.ttf",
+                "dejavu/DejaVuSerif.ttf",
+            ],
+            "verdana" => vec![
+                "liberation/LiberationSans-Regular.ttf",
+                "dejavu/DejaVuSans.ttf",
+            ],
+            "courier new" | "courier" | "monospace" => vec![
+                "liberation/LiberationMono-Regular.ttf",
+                "dejavu/DejaVuSansMono.ttf",
+            ],
+            // Default fallback for unknown families
+            _ => vec![
+                "liberation/LiberationSans-Regular.ttf",
+                "dejavu/DejaVuSans.ttf",
+            ],
         };
 
         for fonts_path in fonts_paths {

@@ -18,7 +18,7 @@ use std::fs::OpenOptions;
 use std::io::Write;
 
 fn log(msg: &str) {
-    if let Ok(mut file) = OpenOptions::new().create(true).append(true).open("c:\\temp\\grob_debug.log") {
+    if let Ok(mut file) = OpenOptions::new().create(true).append(true).open("grob_debug.log") {
         let _ = writeln!(file, "{}", msg);
     }
 }
@@ -96,7 +96,10 @@ fn main() {
                 log(&format!("  Declarations: {} items", rule.declarations.len()));
                 for decl in rule.declarations {
                     log(&format!("    {} = {}", decl.property, decl.value));
-                    style.properties.insert(decl.property, decl.value);
+                    style.properties.insert(decl.property.clone(), decl.value.clone());
+                    if decl.property.to_lowercase() == "width" {
+                        log(&format!("    >>> WIDTH PROPERTY FOUND: {}", decl.value));
+                    }
                 }
                 
                 stylesheet.add_rule(selector, style);
@@ -109,11 +112,23 @@ fn main() {
     
     // Add fallback styles if no CSS was parsed
     if stylesheet.rules.is_empty() {
-        let mut style = Style::new();
-        style.properties.insert("color".to_string(), "black".to_string());
-        style.properties.insert("font-family".to_string(), "Times New Roman".to_string());
-        style.properties.insert("font-size".to_string(), "16px".to_string());
-        stylesheet.add_rule(Selector::Tag("p".to_string()), style);
+        let mut body_style = Style::new();
+        body_style.properties.insert("color".to_string(), "black".to_string());
+        body_style.properties.insert("font-family".to_string(), "Times New Roman".to_string());
+        body_style.properties.insert("font-size".to_string(), "24px".to_string());
+        stylesheet.add_rule(Selector::Tag("body".to_string()), body_style);
+        
+        let mut p_style = Style::new();
+        p_style.properties.insert("color".to_string(), "black".to_string());
+        p_style.properties.insert("font-family".to_string(), "Times New Roman".to_string());
+        p_style.properties.insert("font-size".to_string(), "22px".to_string());
+        stylesheet.add_rule(Selector::Tag("p".to_string()), p_style);
+        
+        let mut h1_style = Style::new();
+        h1_style.properties.insert("color".to_string(), "black".to_string());
+        h1_style.properties.insert("font-family".to_string(), "Times New Roman".to_string());
+        h1_style.properties.insert("font-size".to_string(), "36px".to_string());
+        stylesheet.add_rule(Selector::Tag("h1".to_string()), h1_style);
     }
 
     // --- Layout ---
@@ -129,31 +144,34 @@ fn main() {
     let event_loop = EventLoop::new();
     let window = WindowBuilder::new()
         .with_title(&window_title)
-        .with_inner_size(winit::dpi::LogicalSize::new(800, 600))
+        .with_inner_size(winit::dpi::LogicalSize::new(1200, 800))
         .build(&event_loop)
-        .unwrap();
+        .expect("Failed to create window");
 
+    let scale_factor = window.scale_factor() as f32;
     let mut pixels = {
         let size = window.inner_size();
         let surface_texture = SurfaceTexture::new(size.width, size.height, &window);
-        Pixels::new(size.width, size.height, surface_texture).unwrap()
+        Pixels::new(size.width, size.height, surface_texture).expect("Failed to create pixels buffer")
     };
 
-    let mut viewport_width = 800.0;
-    let mut viewport_height = 600.0;
+    // Use logical size for layout calculations (scale-independent)
+    let initial_size = window.inner_size().to_logical(window.scale_factor());
+    let mut viewport_width = initial_size.width;
+    
+    // Request an initial redraw
+    window.request_redraw();
 
     // --- Render loop ---
     event_loop.run(move |event, _, control_flow| {
-        *control_flow = ControlFlow::Wait;
-
         match event {
             Event::WindowEvent { event: WindowEvent::CloseRequested, .. } => {
-                *control_flow = ControlFlow::Exit
+                *control_flow = ControlFlow::Exit;
             }
             Event::WindowEvent { event: WindowEvent::Resized(new_size), .. } => {
-                viewport_width = new_size.width as f32;
-                viewport_height = new_size.height as f32;
-                // Recreate pixels buffer with new dimensions
+                let logical_size = new_size.to_logical(window.scale_factor());
+                viewport_width = logical_size.width;
+                // Recreate pixels buffer with new dimensions (use physical pixels)
                 let surface_texture = SurfaceTexture::new(new_size.width, new_size.height, &window);
                 pixels = Pixels::new(new_size.width, new_size.height, surface_texture).unwrap();
                 window.request_redraw();
@@ -162,24 +180,24 @@ fn main() {
                 let layout_root = layout_engine.layout_with_viewport(&dom, &stylesheet, viewport_width);
                 
                 let frame = pixels.frame_mut();
+                let physical_size = window.inner_size();
 
-                // Clear frame to white
-                for px in frame.chunks_exact_mut(4) {
-                    px[0] = 255;
-                    px[1] = 255;
-                    px[2] = 255;
-                    px[3] = 255;
+                // Clear frame to white - fill entire buffer
+                for byte in frame.iter_mut() {
+                    *byte = 255;
                 }
 
-                // Draw layout and text
-                draw_layout_and_text(frame, &layout_root, &dom, &mut font_manager, viewport_width as usize, viewport_height as usize);
-                draw_images(frame, &layout_root, &dom, &network_manager, viewport_width as usize, viewport_height as usize);
+                // Draw layout and text - pass both logical and physical dimensions for proper scaling
+                draw_layout_and_text(frame, &layout_root, &dom, &mut font_manager, physical_size.width as usize, physical_size.height as usize, scale_factor);
+                draw_images(frame, &layout_root, &dom, &network_manager, physical_size.width as usize, physical_size.height as usize, scale_factor);
 
                 pixels.render().unwrap();
             }
-            _ => {
+            Event::MainEventsCleared => {
+                // Continuously request redraws to keep the window responsive
                 window.request_redraw();
             }
+            _ => {}
         }
     });
 }
@@ -192,8 +210,9 @@ fn draw_layout_and_text(
     font_manager: &mut FontManager,
     screen_width: usize,
     screen_height: usize,
+    scale_factor: f32,
 ) {
-    draw_box_recursive(frame, layout, dom, font_manager, screen_width, screen_height);
+    draw_box_recursive(frame, layout, dom, font_manager, screen_width, screen_height, scale_factor);
 }
 
 fn draw_box_recursive(
@@ -203,16 +222,18 @@ fn draw_box_recursive(
     font_manager: &mut FontManager,
     screen_width: usize,
     screen_height: usize,
+    scale_factor: f32,
 ) {
     let dims = &layout.dimensions;
     
+    // Scale logical coordinates to physical pixels
+    let x = (dims.x * scale_factor) as usize;
+    let y = (dims.y * scale_factor) as usize;
+    let width = (dims.width * scale_factor) as usize;
+    let height = (dims.height * scale_factor) as usize;
+    
     // Draw background if element has one
     if let Some((bg_r, bg_g, bg_b)) = layout.style.get_background_color() {
-        let x = dims.x as usize;
-        let y = dims.y as usize;
-        let width = dims.width as usize;
-        let height = dims.height as usize;
-        
         for py in y..(y + height).min(screen_height) {
             for px in x..(x + width).min(screen_width) {
                 let idx = (py * screen_width + px) * 4;
@@ -226,8 +247,8 @@ fn draw_box_recursive(
         }
     }
 
-    // Draw text if this is a text node
-    if let engine::dom::NodeType::Text(text) = &dom.nodes[layout.node_id].node_type {
+    // Draw text if this layout box has text content
+    if let Some(text_content) = &layout.text_content {
         let parent_id = dom.nodes[layout.node_id].parent;
         let should_skip = if let Some(pid) = parent_id {
             if let engine::dom::NodeType::Element(elem) = &dom.nodes[pid].node_type {
@@ -240,13 +261,13 @@ fn draw_box_recursive(
         };
 
         if !should_skip {
-            draw_text_glyphs(frame, layout, text, font_manager, screen_width, screen_height);
+            draw_text_glyphs(frame, layout, text_content, font_manager, screen_width, screen_height, scale_factor);
         }
     }
 
     // Draw children
     for child in &layout.children {
-        draw_box_recursive(frame, child, dom, font_manager, screen_width, screen_height);
+        draw_box_recursive(frame, child, dom, font_manager, screen_width, screen_height, scale_factor);
     }
 }
 
@@ -257,6 +278,7 @@ fn draw_text_glyphs(
     font_manager: &mut FontManager,
     screen_width: usize,
     screen_height: usize,
+    scale_factor: f32,
 ) {
     let font_family = layout.style.get_font_family();
     let font_size = layout.style.get_font_size();
@@ -266,8 +288,8 @@ fn draw_text_glyphs(
 
     if let Some(font) = font_manager.load_system_font(font_family) {
         let v_metrics = font.v_metrics(scale);
-        let mut x = layout.dimensions.x as f32;
-        let y = layout.dimensions.y as f32 + v_metrics.ascent;
+        let mut x = layout.dimensions.x * scale_factor;
+        let y = layout.dimensions.y * scale_factor + v_metrics.ascent;
         let text_start_x = x;
 
         for c in text.chars() {
@@ -350,7 +372,7 @@ fn find_title_element(dom: &engine::dom::Dom, node_id: engine::dom::NodeId) -> O
 }
 
 // Draw images from img tags
-fn draw_images(frame: &mut [u8], layout: &engine::layout::LayoutBox, dom: &Arc<engine::dom::Dom>, network: &Arc<NetworkManager>, screen_width: usize, screen_height: usize) {
+fn draw_images(frame: &mut [u8], layout: &engine::layout::LayoutBox, dom: &Arc<engine::dom::Dom>, network: &Arc<NetworkManager>, screen_width: usize, screen_height: usize, scale_factor: f32) {
     let node = &dom.nodes[layout.node_id];
     
     // Check if this is an img element
@@ -372,7 +394,7 @@ fn draw_images(frame: &mut [u8], layout: &engine::layout::LayoutBox, dom: &Arc<e
     }
     
     for child in &layout.children {
-        draw_images(frame, child, dom, network, screen_width, screen_height);
+        draw_images(frame, child, dom, network, screen_width, screen_height, scale_factor);
     }
 }
 
