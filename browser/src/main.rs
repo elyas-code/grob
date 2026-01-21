@@ -1,5 +1,5 @@
 use winit::{
-    event::{Event, WindowEvent},
+    event::{Event, WindowEvent, MouseButton, ElementState},
     event_loop::{ControlFlow, EventLoop},
     window::WindowBuilder,
 };
@@ -9,10 +9,10 @@ use rusttype::{Scale, point};
 use engine::parser::html::tree_builder::HtmlParser;
 use engine::style::{Stylesheet, Style, Selector};
 use engine::layout::LayoutEngine;
-use engine::dom::NodeType;
+use engine::dom::{NodeType, Dom};
 use engine::font::FontManager;
 use engine::net::NetworkManager;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -23,62 +23,94 @@ fn log(msg: &str) {
     }
 }
 
-fn main() {
+// Helper function to find an anchor element at the given coordinates in the layout tree
+fn find_anchor_at_position(
+    layout: &engine::layout::LayoutBox,
+    dom: &Dom,
+    x: f32,
+    y: f32,
+    scale_factor: f32,
+) -> Option<String> {
+    // Convert physical pixels to logical coordinates
+    let logical_x = x / scale_factor;
+    let logical_y = y / scale_factor;
+    
+    find_anchor_recursive(layout, dom, logical_x, logical_y)
+}
+
+fn find_anchor_recursive(
+    layout: &engine::layout::LayoutBox,
+    dom: &Dom,
+    x: f32,
+    y: f32,
+) -> Option<String> {
+    let dims = &layout.dimensions;
+    
+    // Check if point is within this box's bounds
+    if x >= dims.x && x <= dims.x + dims.width &&
+       y >= dims.y && y <= dims.y + dims.height {
+        
+        // Check if this element is an anchor tag
+        if let NodeType::Element(elem) = &dom.nodes[layout.node_id].node_type {
+            if elem.tag_name == "a" {
+                // Extract href attribute
+                if let Some(href) = elem.attributes.iter().find(|(k, _)| k == "href").map(|(_, v)| v.clone()) {
+                    return Some(href);
+                }
+            }
+        }
+        
+        // Check children (they take priority if they're also within bounds)
+        for child in &layout.children {
+            if let Some(href) = find_anchor_recursive(child, dom, x, y) {
+                return Some(href);
+            }
+        }
+    }
+    
+    None
+}
+
+// Helper function to load and parse a page given a URL
+fn load_page(url: &str) -> (Arc<Dom>, Stylesheet) {
     // Fetch HTML from a web URL
-    let url = "https://example.com";
     let html = match fetch_html(url) {
         Ok(content) => content,
         Err(e) => {
-            eprintln!("Failed to fetch HTML: {}", e);
+            eprintln!("Failed to fetch HTML from {}: {}", url, e);
             eprintln!("Using fallback HTML");
-            r#"
+            format!(
+                r#"
                 <!DOCTYPE html>
                 <html>
                 <head>
-                    <title>Grob Browser</title>
+                    <title>Error</title>
                 </head>
                 <body>
                     <h1>Failed to Load Page</h1>
-                    <p>Could not fetch the requested URL.</p>
+                    <p>Could not fetch: {}</p>
+                    <p>Error: {}</p>
                 </body>
                 </html>
-            "#.to_string()
+                "#,
+                url, e
+            )
         }
     };
-    let mut tokenizer = engine::parser::html::tokenizer::Tokenizer::new(&html);
-    let mut token_count = 0;
-    while let Some(token) = tokenizer.next_token() {
-        if matches!(token, engine::parser::html::tokenizer::Token::Eof) {
-            break;
-        }
-        eprintln!("Token {}: {:?}", token_count, token);
-        token_count += 1;
-        if token_count > 50 {
-            eprintln!("(stopping after 50 tokens for brevity)");
-            break;
-        }
-    }
 
     let dom = Arc::new(HtmlParser::new(&html).parse());
-
-    // Extract title from DOM
-    let page_title = extract_title(&dom);
-    let window_title = format!("Grob Browser - {}", page_title);
 
     // Extract CSS from <style> tags in the DOM
     let css = extract_css_from_dom(&*dom, dom.root());
     
     log(&format!("Extracted CSS from <style> tags: {} bytes", css.len()));
-    if !css.is_empty() {
-        log(&format!("CSS content: {}", css));
-    }
 
     // --- CSS (parse and apply) ---
     let mut stylesheet = Stylesheet::new();
     
     // Parse CSS from style tags and convert to stylesheet rules
     if !css.is_empty() {
-        log(&format!("CSS extracted: {}", css));
+        log(&format!("CSS extracted: {} bytes", css.len()));
         let mut css_tokenizer = engine::parser::css::CssTokenizer::new(&css);
         let tokens = css_tokenizer.tokenize();
         let mut css_parser = engine::parser::css::CssParser::new(tokens);
@@ -88,29 +120,20 @@ fn main() {
         // Convert CSS rules to stylesheet rules
         for item in css_items {
             if let engine::parser::css::parser::CssItem::Rule(rule) = item {
-                log(&format!("Processing CSS rule: {:?}", rule.selector));
                 let selector = convert_css_selector(&rule.selector);
-                log(&format!("  -> Converted to: {:?}", selector));
                 let mut style = Style::new();
                 
-                log(&format!("  Declarations: {} items", rule.declarations.len()));
                 for decl in rule.declarations {
-                    log(&format!("    {} = {}", decl.property, decl.value));
                     style.properties.insert(decl.property.clone(), decl.value.clone());
-                    if decl.property.to_lowercase() == "width" {
-                        log(&format!("    >>> WIDTH PROPERTY FOUND: {}", decl.value));
-                    }
                 }
                 
                 stylesheet.add_rule(selector, style);
             }
         }
         log(&format!("Stylesheet now has {} rules", stylesheet.rules.len()));
-    } else {
-        log("No <style> tags found in HTML, using fallback CSS");
     }
     
-    // Add fallback styles if no CSS was parsed
+    // Add default styles if no CSS was parsed
     if stylesheet.rules.is_empty() {
         let mut body_style = Style::new();
         body_style.properties.insert("color".to_string(), "black".to_string());
@@ -130,6 +153,28 @@ fn main() {
         h1_style.properties.insert("font-size".to_string(), "36px".to_string());
         stylesheet.add_rule(Selector::Tag("h1".to_string()), h1_style);
     }
+    
+    // Always add default anchor styles
+    let mut anchor_style = Style::new();
+    anchor_style.properties.insert("color".to_string(), "#0066cc".to_string());
+    anchor_style.properties.insert("text-decoration".to_string(), "underline".to_string());
+    anchor_style.properties.insert("cursor".to_string(), "pointer".to_string());
+    stylesheet.add_rule(Selector::Tag("a".to_string()), anchor_style);
+
+    (dom, stylesheet)
+}
+
+fn main() {
+    // Initial URL to load
+    let initial_url = "https://example.com";
+    
+    // Load initial page
+    let (mut dom, mut stylesheet) = load_page(initial_url);
+    let mut _current_url = initial_url.to_string();
+
+    // Extract title from DOM
+    let page_title = extract_title(&dom);
+    let window_title = format!("Grob Browser - {}", page_title);
 
     // --- Layout ---
     let layout_engine = LayoutEngine::new();
@@ -139,6 +184,9 @@ fn main() {
 
     // --- Network Manager ---
     let network_manager = Arc::new(NetworkManager::new());
+
+    // State for navigation
+    let pending_navigation = Arc::new(Mutex::new(Option::<String>::None));
 
     // --- Window ---
     let event_loop = EventLoop::new();
@@ -159,6 +207,10 @@ fn main() {
     let initial_size = window.inner_size().to_logical(window.scale_factor());
     let mut viewport_width = initial_size.width;
     
+    // Track mouse position and layout root for click handling
+    let mut last_mouse_pos = (0.0, 0.0);
+    let mut last_layout_root: Option<engine::layout::LayoutBox> = None;
+    
     // Request an initial redraw
     window.request_redraw();
 
@@ -176,8 +228,41 @@ fn main() {
                 pixels = Pixels::new(new_size.width, new_size.height, surface_texture).unwrap();
                 window.request_redraw();
             }
+            Event::WindowEvent { event: WindowEvent::CursorMoved { position, .. }, .. } => {
+                // Update mouse position in physical pixels
+                last_mouse_pos = (position.x as f32, position.y as f32);
+                window.request_redraw();
+            }
+            Event::WindowEvent { event: WindowEvent::MouseInput { state: ElementState::Released, button: MouseButton::Left, .. }, .. } => {
+                // Handle click on anchor tag
+                if let Some(layout) = &last_layout_root {
+                    if let Some(href) = find_anchor_at_position(layout, &dom, last_mouse_pos.0, last_mouse_pos.1, scale_factor) {
+                        log(&format!("Clicked anchor with href: {}", href));
+                        if let Ok(mut nav) = pending_navigation.lock() {
+                            *nav = Some(href);
+                        }
+                    }
+                }
+                window.request_redraw();
+            }
             Event::RedrawRequested(_) => {
+                // Check if we need to navigate to a new page
+                if let Ok(mut nav) = pending_navigation.lock() {
+                    if let Some(new_url) = nav.take() {
+                        log(&format!("Navigating to: {}", new_url));
+                        _current_url = new_url.clone();
+                        let (new_dom, new_stylesheet) = load_page(&new_url);
+                        dom = new_dom;
+                        stylesheet = new_stylesheet;
+                        
+                        // Update window title
+                        let new_title = extract_title(&dom);
+                        window.set_title(&format!("Grob Browser - {}", new_title));
+                    }
+                }
+                
                 let layout_root = layout_engine.layout_with_viewport(&dom, &stylesheet, viewport_width);
+                last_layout_root = Some(layout_root.clone());
                 
                 let frame = pixels.frame_mut();
                 let physical_size = window.inner_size();

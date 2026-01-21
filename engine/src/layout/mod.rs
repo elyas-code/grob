@@ -2,13 +2,13 @@
 use crate::dom::{Dom, NodeId};
 use crate::style::{Stylesheet, Style};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum BoxType {
     Block,
     Inline,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Dimensions {
     pub x: f32,
     pub y: f32,
@@ -16,7 +16,7 @@ pub struct Dimensions {
     pub height: f32,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LayoutBox {
     pub node_id: NodeId,
     pub box_type: BoxType,

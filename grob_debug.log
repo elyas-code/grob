@@ -750,3 +750,92 @@ Processing CSS rule: Descendant(Element("a"), PseudoClass("link"))
   -> Converted to: TagWithPseudo("a", "link")
   Declarations: 0 items
 Stylesheet now has 4 rules
+extract_css_from_dom called
+traverse node_id: 0
+  traverse node_id: 1
+    traverse node_id: 2
+      traverse node_id: 3
+        traverse node_id: 4
+      traverse node_id: 5
+      traverse node_id: 6
+      FOUND STYLE TAG!
+        extracting CSS: body{background:#eee;width:60vw;margin:15vh auto;font-family:system-ui,sans-serif}h1{font-size:1.5em}div{opacity:0.8}a:link,a:visited{color:#348}
+        traverse node_id: 7
+    traverse node_id: 8
+      traverse node_id: 9
+        traverse node_id: 10
+          traverse node_id: 11
+      traverse node_id: 12
+        traverse node_id: 13
+      traverse node_id: 14
+        traverse node_id: 15
+          traverse node_id: 16
+extract_css_from_dom done: 146 bytes
+Extracted CSS from <style> tags: 146 bytes
+CSS content: body{background:#eee;width:60vw;margin:15vh auto;font-family:system-ui,sans-serif}h1{font-size:1.5em}div{opacity:0.8}a:link,a:visited{color:#348}
+
+CSS extracted: body{background:#eee;width:60vw;margin:15vh auto;font-family:system-ui,sans-serif}h1{font-size:1.5em}div{opacity:0.8}a:link,a:visited{color:#348}
+
+=== Parsed 4 CSS items from <style> tags ===
+Processing CSS rule: Element("body")
+  -> Converted to: Tag("body")
+  Declarations: 4 items
+    background = #eee
+    width = 60vw
+    >>> WIDTH PROPERTY FOUND: 60vw
+    margin = 15vhauto
+    font-family = system-ui,sans-serif
+Processing CSS rule: Element("h1")
+  -> Converted to: Tag("h1")
+  Declarations: 1 items
+    font-size = 1.5em
+Processing CSS rule: Element("div")
+  -> Converted to: Tag("div")
+  Declarations: 1 items
+    opacity = 0.8
+Processing CSS rule: Descendant(Element("a"), PseudoClass("link"))
+  -> Converted to: TagWithPseudo("a", "link")
+  Declarations: 0 items
+Stylesheet now has 4 rules
+extract_css_from_dom called
+traverse node_id: 0
+  traverse node_id: 1
+    traverse node_id: 2
+      traverse node_id: 3
+        traverse node_id: 4
+      traverse node_id: 5
+      traverse node_id: 6
+      FOUND STYLE TAG!
+        extracting CSS: body{background:#eee;width:60vw;margin:15vh auto;font-family:system-ui,sans-serif}h1{font-size:1.5em}div{opacity:0.8}a:link,a:visited{color:#348}
+        traverse node_id: 7
+    traverse node_id: 8
+      traverse node_id: 9
+        traverse node_id: 10
+          traverse node_id: 11
+      traverse node_id: 12
+        traverse node_id: 13
+      traverse node_id: 14
+        traverse node_id: 15
+          traverse node_id: 16
+extract_css_from_dom done: 146 bytes
+Extracted CSS from <style> tags: 146 bytes
+CSS extracted: 146 bytes
+=== Parsed 4 CSS items from <style> tags ===
+Stylesheet now has 4 rules
+Clicked anchor with href: https://iana.org/domains/example
+Navigating to: https://iana.org/domains/example
+extract_css_from_dom called
+traverse node_id: 0
+  traverse node_id: 1
+    traverse node_id: 2
+      traverse node_id: 3
+        traverse node_id: 4
+    traverse node_id: 5
+      traverse node_id: 6
+        traverse node_id: 7
+      traverse node_id: 8
+        traverse node_id: 9
+      traverse node_id: 10
+        traverse node_id: 11
+extract_css_from_dom done: 0 bytes
+Extracted CSS from <style> tags: 0 bytes
