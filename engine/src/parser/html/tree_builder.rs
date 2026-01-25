@@ -157,26 +157,23 @@ impl HtmlParser {
 
                     // -------- INITIAL MODE --------
                     if mode == InsertionMode::Initial {
-                        // Auto-insert html element
-                        let html = dom.create_element("html", vec![], Some(document));
-                        stack.push(html);
+                        // Move directly to BeforeHtml without creating an element yet
                         mode = InsertionMode::BeforeHtml;
                     }
 
                     // -------- BEFORE HTML --------
                     if mode == InsertionMode::BeforeHtml {
                         if tag == "html" {
-                            stack.pop(); // remove implicit html
                             let html = dom.create_element("html", attrs.clone(), Some(document));
                             stack.push(html);
                             mode = InsertionMode::BeforeHead;
                             continue;
                         } else {
-                            // Auto-insert html
+                            // Auto-insert html element
                             let html = dom.create_element("html", vec![], Some(document));
-                            stack.pop();
                             stack.push(html);
                             mode = InsertionMode::BeforeHead;
+                            // Fall through to process this tag in BeforeHead mode
                         }
                     }
 
@@ -375,5 +372,65 @@ impl HtmlParser {
         }
 
         dom
+    }
+}
+
+#[cfg(test)]
+mod debug_tests {
+    use super::*;
+
+    fn print_dom_tree(dom: &Dom, node_id: NodeId, indent: usize) {
+        let node = &dom.nodes[node_id];
+        let prefix = "  ".repeat(indent);
+        
+        match &node.node_type {
+            crate::dom::NodeType::Element(el) => {
+                let attrs: Vec<String> = el.attributes.iter()
+                    .map(|(k, v)| format!("{}={}", k, v))
+                    .collect();
+                if attrs.is_empty() {
+                    eprintln!("{}<{}>", prefix, el.tag_name);
+                } else {
+                    eprintln!("{}<{} {}>", prefix, el.tag_name, attrs.join(" "));
+                }
+            }
+            crate::dom::NodeType::Text(text) => {
+                let text = text.trim();
+                if !text.is_empty() {
+                    let display = if text.len() > 40 {
+                        format!("{}...", &text[..40])
+                    } else {
+                        text.to_string()
+                    };
+                    eprintln!("{}TEXT: {:?}", prefix, display);
+                }
+            }
+        }
+        
+        for &child_id in &node.children {
+            print_dom_tree(dom, child_id, indent + 1);
+        }
+    }
+
+    #[test]
+    fn test_parse_old_cern_html() {
+        let html = r#"<TITLE>What is Hypertext?</TITLE>
+<NEXTID 20>
+<H1>What is HyperText</H1>Hypertext is text which is not constrained to be linear.<P>
+Hypertext is text which contains <A NAME=0 HREF=Terms.html#link>links</A> to other texts.<P>
+See also:
+<UL>
+<LI><A NAME=2 HREF=Terms.html>A list of terms</A> used in hypertext litterature.
+<LI><A NAME=19 HREF=../Conferences/Overview.html>Conferences</A>
+</UL>"#;
+
+        eprintln!("\n=== PARSING OLD CERN HTML ===");
+        let parser = HtmlParser::new(html);
+        let dom = parser.parse();
+        
+        eprintln!("\n=== ACTUAL DOM STRUCTURE ===");
+        print_dom_tree(&dom, 0, 0);
+        
+        eprintln!("\n=== NODE COUNT: {} ===", dom.nodes.len());
     }
 }

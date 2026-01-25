@@ -118,9 +118,14 @@ pub enum TokenizerState {
 }
 
 /// Void elements that cannot have content (spec 13.1.2)
+/// Also includes obsolete HTML elements that are void/empty
 pub const VOID_ELEMENTS: &[&str] = &[
+    // Standard HTML5 void elements
     "area", "base", "br", "col", "embed", "hr", "img", "input",
     "link", "meta", "param", "source", "track", "wbr",
+    // Obsolete void elements (from older HTML versions)
+    "basefont", "bgsound", "frame", "isindex", "keygen", "nextid",
+    "command", "spacer",
 ];
 
 /// Raw text elements (spec 13.1.2.1)
