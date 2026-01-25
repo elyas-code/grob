@@ -3,6 +3,7 @@
         "cargo check": true,
         "cargo build": true,
         "timeout": true,
-        "true": true
+        "true": true,
+        "gsettings": true
     }
 }

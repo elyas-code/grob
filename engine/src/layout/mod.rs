@@ -283,12 +283,37 @@ impl LayoutEngine {
     fn is_block_element(&self, dom: &Dom, node_id: NodeId) -> bool {
         match &dom.nodes[node_id].node_type {
             crate::dom::NodeType::Text(_) => false,
-            crate::dom::NodeType::Element(el) => matches!(el.tag_name.as_str(),
-                "p" | "div" | "body" | "html" | "document" | "head" | "title" | "meta" | "link" | 
-                "style" | "script" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "img" | "iframe" | 
-                "video" | "canvas" | "ul" | "ol" | "li" | "dl" | "dt" | "dd" | "blockquote" | 
-                "pre" | "hr" | "address" | "article" | "aside" | "footer" | "header" | "nav" | 
-                "section" | "figure" | "figcaption" | "main" | "form" | "fieldset" | "table"),
+            crate::dom::NodeType::Element(el) => {
+                // Check if display is explicitly set via style attribute
+                // For now, use HTML default block/inline classification
+                // Per HTML spec, these elements have display: block by default
+                matches!(el.tag_name.to_lowercase().as_str(),
+                    // Document structure
+                    "html" | "body" | "document" | "head" | "title" | "meta" | "link" | 
+                    "style" | "script" | "noscript" | "template" |
+                    // Sections
+                    "article" | "aside" | "footer" | "header" | "nav" | "section" | "main" |
+                    // Grouping content
+                    "p" | "div" | "blockquote" | "pre" | "hr" | "address" |
+                    "figure" | "figcaption" | "center" |
+                    // Headings
+                    "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "hgroup" |
+                    // Lists
+                    "ul" | "ol" | "li" | "dl" | "dt" | "dd" | "dir" | "menu" |
+                    // Tables
+                    "table" | "caption" | "thead" | "tbody" | "tfoot" | "tr" | "td" | "th" | "col" | "colgroup" |
+                    // Forms
+                    "form" | "fieldset" | "legend" | "label" | "input" | "button" | 
+                    "select" | "textarea" | "option" | "optgroup" | "datalist" | "output" |
+                    // Embedded content (often block-like)
+                    "img" | "iframe" | "video" | "audio" | "canvas" | "object" | "embed" |
+                    "picture" | "source" | "track" |
+                    // Interactive
+                    "details" | "summary" | "dialog" |
+                    // Deprecated but still used
+                    "xmp" | "listing" | "plaintext" | "frameset" | "frame" | "noframes"
+                )
+            }
         }
     }
     

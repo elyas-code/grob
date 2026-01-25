@@ -12,6 +12,7 @@ use engine::layout::LayoutEngine;
 use engine::dom::{NodeType, Dom, NodeId};
 use engine::font::FontManager;
 use engine::net::NetworkManager;
+use engine::net::url::resolve_url;
 use std::sync::{Arc, Mutex};
 
 use std::fs::OpenOptions;
@@ -21,6 +22,18 @@ fn log(msg: &str) {
     if let Ok(mut file) = OpenOptions::new().create(true).append(true).open("grob_debug.log") {
         let _ = writeln!(file, "{}", msg);
     }
+}
+
+/// Round a dimension up to the nearest multiple of the scale factor.
+/// This is required for Wayland which enforces that buffer sizes must be
+/// integer multiples of the buffer_scale.
+fn round_to_scale(value: u32, scale: f64) -> u32 {
+    let scale_int = scale.ceil() as u32;
+    if scale_int <= 1 {
+        return value;
+    }
+    // Round up to nearest multiple of scale
+    ((value + scale_int - 1) / scale_int) * scale_int
 }
 
 // Helper function to find an anchor element at the given coordinates in the layout tree
@@ -133,7 +146,10 @@ fn find_anchor_in_dom(dom: &Dom, node_id: NodeId, x: f32, y: f32) -> Option<Stri
 }
 
 // Helper function to load and parse a page given a URL
-fn load_page(url: &str) -> (Arc<Dom>, Stylesheet) {
+fn load_page(url: &str, network_manager: &NetworkManager) -> (Arc<Dom>, Stylesheet) {
+    // Set the document URL for resolving relative URLs
+    network_manager.set_document_url(url);
+    
     // Fetch HTML from a web URL
     let html = match fetch_html(url) {
         Ok(content) => content,
@@ -159,7 +175,15 @@ fn load_page(url: &str) -> (Arc<Dom>, Stylesheet) {
         }
     };
 
-    let dom = Arc::new(HtmlParser::new(&html).parse());
+    let dom = HtmlParser::new(&html).parse();
+    
+    // Extract and set the <base href> if present
+    if let Some(base_href) = engine::parser::html::extract_base_href(&dom) {
+        log(&format!("Found <base href=\"{}\">", base_href));
+        network_manager.set_base_href(&base_href);
+    }
+    
+    let dom = Arc::new(dom);
 
     // Extract CSS from <style> tags in the DOM
     let css = extract_css_from_dom(&*dom, dom.root());
@@ -201,12 +225,26 @@ fn load_page(url: &str) -> (Arc<Dom>, Stylesheet) {
 }
 
 fn main() {
+    // Force X11 backend on Linux to avoid Wayland fractional scaling issues
+    // This is a workaround for GNOME's scale-monitor-framebuffer feature
+    // which causes buffer size validation errors with client-side decorations
+    #[cfg(target_os = "linux")]
+    {
+        if std::env::var("WAYLAND_DISPLAY").is_ok() {
+            std::env::remove_var("WAYLAND_DISPLAY");
+            eprintln!("Note: Forcing X11 backend due to Wayland scaling compatibility issues");
+        }
+    }
+    
     // Initial URL to load
     let initial_url = "https://info.cern.ch/";
     
+    // --- Network Manager (created early so load_page can use it) ---
+    let network_manager = Arc::new(NetworkManager::new());
+    
     // Load initial page
-    let (mut dom, mut stylesheet) = load_page(initial_url);
-    let mut _current_url = initial_url.to_string();
+    let (mut dom, mut stylesheet) = load_page(initial_url, &network_manager);
+    let mut current_url = initial_url.to_string();
 
     // Extract title from DOM
     let page_title = extract_title(&dom);
@@ -218,29 +256,36 @@ fn main() {
     // --- Font Manager ---
     let mut font_manager = FontManager::new();
 
-    // --- Network Manager ---
-    let network_manager = Arc::new(NetworkManager::new());
-
     // State for navigation
     let pending_navigation = Arc::new(Mutex::new(Option::<String>::None));
 
     // --- Window ---
     let event_loop = EventLoop::new();
+    
+    // Use a logical size that will result in even physical dimensions at any scale factor
+    // 800x600 logical -> 1600x1200 at scale 2, 800x600 at scale 1
+    let initial_logical_size = winit::dpi::LogicalSize::new(800.0, 600.0);
+    
     let window = WindowBuilder::new()
         .with_title(&window_title)
+        .with_inner_size(initial_logical_size)
         .build(&event_loop)
         .expect("Failed to create window");
 
     let scale_factor = window.scale_factor() as f32;
-    let initial_size = window.inner_size();
+    let physical_size = window.inner_size();
+    
+    // Ensure physical dimensions are multiples of the scale factor for Wayland compatibility
+    let buffer_width = round_to_scale(physical_size.width, window.scale_factor());
+    let buffer_height = round_to_scale(physical_size.height, window.scale_factor());
+    
     let mut pixels = {
-        let surface_texture = SurfaceTexture::new(initial_size.width, initial_size.height, &window);
-        Pixels::new(initial_size.width, initial_size.height, surface_texture).expect("Failed to create pixels buffer")
+        let surface_texture = SurfaceTexture::new(buffer_width, buffer_height, &window);
+        Pixels::new(buffer_width, buffer_height, surface_texture).expect("Failed to create pixels buffer")
     };
 
     // Use logical size for layout calculations (scale-independent)
-    let logical_size: winit::dpi::LogicalSize<f32> = initial_size.to_logical(window.scale_factor());
-    let mut viewport = Viewport::new(logical_size.width, logical_size.height);
+    let mut viewport = Viewport::new(initial_logical_size.width as f32, initial_logical_size.height as f32);
     layout_engine.set_viewport(viewport);
     stylesheet.set_viewport(viewport);
     
@@ -259,14 +304,30 @@ fn main() {
                 *control_flow = ControlFlow::Exit;
             }
             Event::WindowEvent { event: WindowEvent::Resized(new_size), .. } => {
+                // Skip zero-size resizes (can happen during minimize)
+                if new_size.width == 0 || new_size.height == 0 {
+                    return;
+                }
+                
+                // Round to scale factor multiple for Wayland compatibility
+                let buffer_width = round_to_scale(new_size.width, window.scale_factor());
+                let buffer_height = round_to_scale(new_size.height, window.scale_factor());
+                
+                // If dimensions needed rounding, resize window to match
+                if buffer_width != new_size.width || buffer_height != new_size.height {
+                    window.set_inner_size(winit::dpi::PhysicalSize::new(buffer_width, buffer_height));
+                    return;
+                }
+                
                 let logical_size: winit::dpi::LogicalSize<f32> = new_size.to_logical(window.scale_factor());
                 viewport = Viewport::new(logical_size.width, logical_size.height);
                 layout_engine.set_viewport(viewport);
                 stylesheet.set_viewport(viewport);
                 needs_layout = true;
-                // Recreate pixels buffer with new dimensions (use physical pixels)
-                let surface_texture = SurfaceTexture::new(new_size.width, new_size.height, &window);
-                pixels = Pixels::new(new_size.width, new_size.height, surface_texture).unwrap();
+                
+                // Recreate pixels buffer with new dimensions
+                let surface_texture = SurfaceTexture::new(buffer_width, buffer_height, &window);
+                pixels = Pixels::new(buffer_width, buffer_height, surface_texture).unwrap();
                 window.request_redraw();
             }
             Event::WindowEvent { event: WindowEvent::CursorMoved { position, .. }, .. } => {
@@ -278,9 +339,12 @@ fn main() {
                 // Handle click on anchor tag
                 if let Some(layout) = &last_layout_root {
                     if let Some(href) = find_anchor_at_position(layout, &dom, last_mouse_pos.0, last_mouse_pos.1, scale_factor) {
-                        log(&format!("SUCCESS: Navigating to {}", href));
+                        // Resolve relative URL against current page URL
+                        // resolve_url(base_url, relative_url) - base is current page, relative is the href
+                        let resolved_url = resolve_url(&current_url, &href);
+                        log(&format!("SUCCESS: Navigating to {} (resolved from {})", resolved_url, href));
                         if let Ok(mut nav) = pending_navigation.lock() {
-                            *nav = Some(href);
+                            *nav = Some(resolved_url);
                         }
                     }
                 }
@@ -291,8 +355,8 @@ fn main() {
                 if let Ok(mut nav) = pending_navigation.lock() {
                     if let Some(new_url) = nav.take() {
                         log(&format!("Navigating to: {}", new_url));
-                        _current_url = new_url.clone();
-                        let (new_dom, new_stylesheet) = load_page(&new_url);
+                        current_url = new_url.clone();
+                        let (new_dom, new_stylesheet) = load_page(&new_url, &network_manager);
                         dom = new_dom;
                         stylesheet = new_stylesheet;
                         stylesheet.set_viewport(viewport);
@@ -520,12 +584,24 @@ fn draw_images(frame: &mut [u8], layout: &engine::layout::LayoutBox, dom: &Arc<e
     // Check if this is an img element
     if let NodeType::Element(el) = &node.node_type {
         if el.tag_name == "img" {
-            // Get src and alt attributes
-            if let Some(src) = el.attributes.iter().find(|(k, _)| k == "src").map(|(_, v)| v) {
-                let alt = el.attributes.iter().find(|(k, _)| k == "alt").map(|(_, v)| v.clone()).unwrap_or_else(|| "Image".to_string());
-                
-                // Try to fetch and draw the real image
-                if let Some(img_data) = network.fetch_image(src) {
+            // Check for srcset first, then fallback to src
+            let srcset = el.attributes.iter().find(|(k, _)| k == "srcset").map(|(_, v)| v.clone());
+            let src = el.attributes.iter().find(|(k, _)| k == "src").map(|(_, v)| v.clone());
+            let alt = el.attributes.iter().find(|(k, _)| k == "alt").map(|(_, v)| v.clone()).unwrap_or_else(|| "Image".to_string());
+            
+            // Select the best image URL
+            let image_url = if let Some(srcset_attr) = srcset {
+                // Parse srcset and select the best image for the current viewport
+                let viewport_width = layout.dimensions.width as u32;
+                let srcset_entries = engine::net::parse_srcset(&srcset_attr);
+                engine::net::select_srcset_image(&srcset_entries, src.as_deref(), viewport_width, scale_factor)
+            } else {
+                src
+            };
+            
+            if let Some(url) = image_url {
+                // The NetworkManager will handle URL resolution internally
+                if let Some(img_data) = network.fetch_image(&url) {
                     draw_real_image(frame, layout, &img_data, &alt, screen_width, screen_height);
                 } else {
                     // Fall back to placeholder
@@ -535,8 +611,72 @@ fn draw_images(frame: &mut [u8], layout: &engine::layout::LayoutBox, dom: &Arc<e
         }
     }
     
+    // Also check for CSS background images
+    if let Some(bg) = layout.style.get("background-image").or(layout.style.get("background")) {
+        if let Some(url) = extract_url_from_css_value(bg) {
+            if let Some(img_data) = network.fetch_image(&url) {
+                draw_background_image(frame, layout, &img_data, screen_width, screen_height);
+            }
+        }
+    }
+    
     for child in &layout.children {
         draw_images(frame, child, dom, network, screen_width, screen_height, scale_factor);
+    }
+}
+
+// Extract URL from CSS url(...) value
+fn extract_url_from_css_value(value: &str) -> Option<String> {
+    let value = value.trim().to_lowercase();
+    if let Some(start) = value.find("url(") {
+        let rest = &value[start + 4..];
+        if let Some(end) = rest.find(')') {
+            let url = rest[..end].trim();
+            // Remove quotes if present
+            let url = url.trim_matches(|c| c == '"' || c == '\'');
+            if !url.is_empty() && !url.starts_with("data:") {
+                return Some(url.to_string());
+            }
+        }
+    }
+    None
+}
+
+// Draw a background image
+fn draw_background_image(frame: &mut [u8], layout: &engine::layout::LayoutBox, img: &image::RgbaImage, screen_width: usize, screen_height: usize) {
+    let dims = &layout.dimensions;
+    let x = dims.x as usize;
+    let y = dims.y as usize;
+    let width = dims.width as usize;
+    let height = dims.height as usize;
+    
+    // Tile or stretch the background image
+    for py in 0..height {
+        if y + py >= screen_height {
+            break;
+        }
+        for px in 0..width {
+            if x + px >= screen_width {
+                break;
+            }
+            
+            // Tile the image
+            let src_x = (px as u32) % img.width();
+            let src_y = (py as u32) % img.height();
+            
+            if let Some(pixel) = img.get_pixel_checked(src_x, src_y) {
+                let screen_idx = ((y + py) * screen_width + (x + px)) * 4;
+                if screen_idx + 3 < frame.len() && pixel[3] > 0 {
+                    // Alpha blending
+                    let alpha = pixel[3] as u32;
+                    let inv_alpha = 255 - alpha;
+                    frame[screen_idx] = ((frame[screen_idx] as u32 * inv_alpha + pixel[0] as u32 * alpha) / 255) as u8;
+                    frame[screen_idx + 1] = ((frame[screen_idx + 1] as u32 * inv_alpha + pixel[1] as u32 * alpha) / 255) as u8;
+                    frame[screen_idx + 2] = ((frame[screen_idx + 2] as u32 * inv_alpha + pixel[2] as u32 * alpha) / 255) as u8;
+                    frame[screen_idx + 3] = 255;
+                }
+            }
+        }
     }
 }
 
