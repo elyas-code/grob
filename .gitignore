@@ -1,6 +1,5 @@
 # Rust build output
 target/
-.github/
 .DS_Store/
 .vscode/
 out/
