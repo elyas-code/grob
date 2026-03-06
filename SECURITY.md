@@ -6,7 +6,7 @@ Grob is currently in active development (Alpha phase). Security updates and patc
 
 | Version | Status | Supported |
 | ------- | ------ | --------- |
-| 0.0.1 | Initial Release (Alpha) | ✅ Full Support |
+| 0.0.1 | Initial Release (Alpha) | Full Support |
 
 **Note**: Grob is at its initial release (0.0.1). As the project develops, new versions will be released with new features, improvements, and security patches.
 
@@ -24,28 +24,28 @@ Grob is currently in active development (Alpha phase). Security updates and patc
 Grob is in **Alpha development** and should **not be used in production environments** without thorough security review and testing. The following security features are either incomplete or planned:
 
 #### Implemented Security Features
-- ✅ Memory safety via Rust's ownership system
-- ✅ Safe concurrency primitives
-- ✅ Input validation in parsers (HTML/CSS)
-- ✅ Basic error handling and recovery
+- Memory safety via Rust's ownership system
+- Safe concurrency primitives
+- Input validation in parsers (HTML/CSS)
+- Basic error handling and recovery
 
 #### Planned Security Features
-- 🚧 HTTPS/TLS support (currently HTTP only)
-- 🚧 Content Security Policy (CSP) enforcement
-- 🚧 CORS (Cross-Origin Resource Sharing) support
-- 🚧 XSS (Cross-Site Scripting) protection
-- 🚧 CSRF (Cross-Site Request Forgery) tokens
-- 🚧 Secure cookie handling
-- 🚧 Sandbox/isolation for JavaScript execution
-- 🚧 Safe resource loading with origin verification
+- HTTPS/TLS support (currently HTTP only)
+- Content Security Policy (CSP) enforcement
+- CORS (Cross-Origin Resource Sharing) support
+- XSS (Cross-Site Scripting) protection
+- CSRF (Cross-Site Request Forgery) tokens
+- Secure cookie handling
+- Sandbox/isolation for JavaScript execution
+- Safe resource loading with origin verification
 
 #### Known Security Limitations
-- ⚠️ No HTTPS support - all connections are unencrypted HTTP
-- ⚠️ Limited input validation for malicious content
-- ⚠️ JavaScript execution not sandboxed (in development)
-- ⚠️ No authentication or authorization framework
-- ⚠️ File system access not restricted
-- ⚠️ No protection against malicious stylesheets or scripts
+- No HTTPS support - all connections are unencrypted HTTP
+- Limited input validation for malicious content
+- JavaScript execution not sandboxed (in development)
+- No authentication or authorization framework
+- File system access not restricted
+- No protection against malicious stylesheets or scripts
 
 ---
 
@@ -128,25 +128,37 @@ Include the following information:
 
 ## Security Roadmap
 
-### Phase 1 (Current - Alpha)
+### Phase 1 (Prealpha - Current)
 - Focus: Core engine stability and correctness
 - Security: Basic input validation, memory safety
+- Internal testing only
 - Target: Q1 2026
 
-### Phase 2 (Beta)
-- HTTPS/TLS support
-- Basic sandbox for JavaScript
-- Content Security Policy support
+### Phase 2 (Alpha)
+- Initial HTTPS/TLS implementation
+- Early JavaScript sandbox prototype
+- Basic same-origin policy enforcement
+- Initial Content Security Policy parsing
+- Fuzz testing for parser and rendering engine
 - Target: Q2 2026
 
-### Phase 3 (1.0 Release)
+### Phase 3 (Beta)
+- Full HTTPS/TLS support
+- Stable JavaScript sandbox
+- Content Security Policy enforcement
+- Initial CORS support
+- Security bug bounty program
+- Target: Q3 2026
+
+### Phase 4 (1.0 Release)
 - Full CORS implementation
 - Comprehensive XSS protection
 - Secure cookie handling
+- Hardened sandboxing
 - Security audit by external firm
 - Target: Q4 2026
 
-### Phase 4 (Post 1.0)
+### Phase 5 (Post 1.0)
 - Advanced sandboxing
 - Service Worker security
 - Enhanced authentication support
@@ -189,7 +201,50 @@ Grob aims to comply with:
 
 For security matters only (not general support):
 - Email: **elyas@albahrani.org**
-- PGP Key: [To be added when available]
+- PGP Key: 
+
+-----BEGIN PGP PUBLIC KEY BLOCK-----
+
+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
+GULOdPTuuycMtNiuuXGvvwJ3Ew==
+=yVD+
+-----END PGP PUBLIC KEY BLOCK-----
+
 
 For general support and bug reports:
 - GitHub Issues: https://github.com/elyas-code/grob/issues
@@ -212,6 +267,6 @@ We thank all security researchers and community members who responsibly report v
 
 ---
 
-**Last Updated**: January 22, 2026
+**Last Updated**: March 6, 2026
 
-**Status**: Alpha - Security features still under development
+**Status**: Prealpha - Security features still under development

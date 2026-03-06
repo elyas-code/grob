@@ -14,94 +14,94 @@ mod url_resolution_tests {
     
     #[test]
     fn test_parse_simple_url() {
-        let url = ParsedUrl::parse("https://example.com/path/to/file.html").unwrap();
+        let url = ParsedUrl::parse("https://en.wikipedia.org/wiki/Rust_(programming_language)").unwrap();
         assert_eq!(url.scheme, "https");
-        assert_eq!(url.host, "example.com");
-        assert_eq!(url.path, "/path/to/file.html");
+        assert_eq!(url.host, "en.wikipedia.org");
+        assert_eq!(url.path, "/wiki/Rust_(programming_language)");
         assert_eq!(url.port, None);
     }
     
     #[test]
     fn test_parse_url_with_port() {
-        let url = ParsedUrl::parse("http://localhost:8080/api/data").unwrap();
-        assert_eq!(url.scheme, "http");
-        assert_eq!(url.host, "localhost");
-        assert_eq!(url.port, Some(8080));
-        assert_eq!(url.path, "/api/data");
+        let url = ParsedUrl::parse("https://github.com:443/torvalds/linux").unwrap();
+        assert_eq!(url.scheme, "https");
+        assert_eq!(url.host, "github.com");
+        assert_eq!(url.port, Some(443));
+        assert_eq!(url.path, "/torvalds/linux");
     }
     
     #[test]
     fn test_parse_url_with_query_and_fragment() {
-        let url = ParsedUrl::parse("https://example.com/search?q=test&page=1#results").unwrap();
+        let url = ParsedUrl::parse("https://www.google.com/search?q=rust+programming&page=1#results").unwrap();
         assert_eq!(url.path, "/search");
-        assert_eq!(url.query, Some("q=test&page=1".to_string()));
+        assert_eq!(url.query, Some("q=rust+programming&page=1".to_string()));
         assert_eq!(url.fragment, Some("results".to_string()));
     }
     
     #[test]
     fn test_resolve_relative_same_directory() {
-        let result = resolve_url("https://example.com/path/page.html", "image.png");
-        assert_eq!(result, "https://example.com/path/image.png");
+        let result = resolve_url("https://en.wikipedia.org/wiki/Rust/page.html", "logo.png");
+        assert_eq!(result, "https://en.wikipedia.org/wiki/Rust/logo.png");
     }
     
     #[test]
     fn test_resolve_relative_parent_directory() {
-        let result = resolve_url("https://example.com/a/b/c.html", "../img.png");
-        assert_eq!(result, "https://example.com/a/img.png");
+        let result = resolve_url("https://github.com/rust-lang/rust/docs/guide.html", "../images/logo.png");
+        assert_eq!(result, "https://github.com/rust-lang/images/logo.png");
     }
     
     #[test]
     fn test_resolve_relative_root() {
-        let result = resolve_url("https://example.com/deep/nested/page.html", "/assets/image.png");
-        assert_eq!(result, "https://example.com/assets/image.png");
+        let result = resolve_url("https://github.com/deep/nested/page.html", "/assets/banner.png");
+        assert_eq!(result, "https://github.com/assets/banner.png");
     }
     
     #[test]
     fn test_resolve_protocol_relative() {
-        let result = resolve_url("https://example.com/page.html", "//cdn.example.com/lib.js");
-        assert_eq!(result, "https://cdn.example.com/lib.js");
+        let result = resolve_url("https://github.com/page.html", "//cdn.jsdelivr.net/npm/library@latest/dist/lib.js");
+        assert_eq!(result, "https://cdn.jsdelivr.net/npm/library@latest/dist/lib.js");
     }
     
     #[test]
     fn test_resolve_absolute_url_unchanged() {
-        let result = resolve_url("https://example.com/page.html", "https://other.com/image.png");
-        assert_eq!(result, "https://other.com/image.png");
+        let result = resolve_url("https://github.com/page.html", "https://raw.githubusercontent.com/torvalds/linux/master/README");
+        assert_eq!(result, "https://raw.githubusercontent.com/torvalds/linux/master/README");
     }
     
     #[test]
     fn test_resolve_with_base_href() {
         let result = resolve_url_with_base(
-            "https://example.com/app/index.html",
+            "https://github.com/app/index.html",
             Some("/static/"),
             "logo.png"
         );
-        assert_eq!(result, "https://example.com/static/logo.png");
+        assert_eq!(result, "https://github.com/static/logo.png");
     }
     
     #[test]
     fn test_resolve_with_absolute_base_href() {
         let result = resolve_url_with_base(
-            "https://example.com/app/index.html",
-            Some("https://cdn.example.com/assets/"),
+            "https://github.com/app/index.html",
+            Some("https://cdn.jsdelivr.net/npm/assets/"),
             "image.jpg"
         );
-        assert_eq!(result, "https://cdn.example.com/assets/image.jpg");
+        assert_eq!(result, "https://cdn.jsdelivr.net/npm/assets/image.jpg");
     }
     
     #[test]
     fn test_resolve_without_base_href() {
         let result = resolve_url_with_base(
-            "https://example.com/app/index.html",
+            "https://github.com/app/index.html",
             None,
             "local.png"
         );
-        assert_eq!(result, "https://example.com/app/local.png");
+        assert_eq!(result, "https://github.com/app/local.png");
     }
     
     #[test]
     fn test_data_uri_unchanged() {
-        let data_uri = "data:image/png;base64,iVBORw0KGgo=";
-        let result = resolve_url("https://example.com/page.html", data_uri);
+        let data_uri = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+        let result = resolve_url("https://github.com/page.html", data_uri);
         assert_eq!(result, data_uri);
     }
 }
@@ -402,9 +402,9 @@ mod cache_tests {
         let data = b"image data".to_vec();
         let headers = CacheHeaders::default();
         
-        cache.store("https://example.com/img.png", data.clone(), "image/png".to_string(), headers);
+        cache.store("https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/img/logo.png", data.clone(), "image/png".to_string(), headers);
         
-        match cache.lookup("https://example.com/img.png") {
+        match cache.lookup("https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/img/logo.png") {
             CacheLookup::Hit(entry) => {
                 assert_eq!(entry.data, data);
                 assert_eq!(entry.content_type, "image/png");
@@ -417,7 +417,7 @@ mod cache_tests {
     fn test_cache_miss() {
         let cache = AssetCache::new();
         
-        match cache.lookup("https://example.com/nonexistent.png") {
+        match cache.lookup("https://cdn.jsdelivr.net/npm/nonexistent/image.png") {
             CacheLookup::Miss => {}
             _ => panic!("Expected cache miss"),
         }
@@ -432,9 +432,9 @@ mod cache_tests {
             ..Default::default()
         };
         
-        cache.store("https://example.com/private.png", vec![1, 2, 3], "image/png".to_string(), headers);
+        cache.store("https://github.com/api/private/token", vec![1, 2, 3], "image/png".to_string(), headers);
         
-        match cache.lookup("https://example.com/private.png") {
+        match cache.lookup("https://github.com/api/private/token") {
             CacheLookup::Miss => {}
             _ => panic!("Expected miss for no-store"),
         }
@@ -449,9 +449,9 @@ mod cache_tests {
             ..Default::default()
         };
         
-        cache.store("https://example.com/img.png", vec![1, 2, 3], "image/png".to_string(), headers);
+        cache.store("https://cdn.jsdelivr.net/npm/library@1.0.0/dist/img.png", vec![1, 2, 3], "image/png".to_string(), headers);
         
-        match cache.lookup("https://example.com/img.png") {
+        match cache.lookup("https://cdn.jsdelivr.net/npm/library@1.0.0/dist/img.png") {
             CacheLookup::Hit(entry) => {
                 assert_eq!(entry.etag, Some("\"abc123\"".to_string()));
             }
@@ -474,12 +474,12 @@ mod cache_tests {
         let cache = AssetCache::new();
         
         let headers = CacheHeaders::default();
-        cache.store("https://example.com/img.png", vec![1, 2, 3], "image/png".to_string(), headers);
+        cache.store("https://cdn.jsdelivr.net/npm/library/img.png", vec![1, 2, 3], "image/png".to_string(), headers);
         
         // Refresh should update the cached_at time
-        cache.refresh("https://example.com/img.png");
+        cache.refresh("https://cdn.jsdelivr.net/npm/library/img.png");
         
-        match cache.lookup("https://example.com/img.png") {
+        match cache.lookup("https://cdn.jsdelivr.net/npm/library/img.png") {
             CacheLookup::Hit(_) => {}
             _ => panic!("Expected hit after refresh"),
         }
@@ -490,8 +490,8 @@ mod cache_tests {
         let cache = AssetCache::new();
         
         let headers = CacheHeaders::default();
-        cache.store("https://example.com/a.png", vec![1, 2, 3, 4, 5], "image/png".to_string(), headers.clone());
-        cache.store("https://example.com/b.png", vec![1, 2, 3], "image/png".to_string(), headers);
+        cache.store("https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/img/a.png", vec![1, 2, 3, 4, 5], "image/png".to_string(), headers.clone());
+        cache.store("https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/img/b.png", vec![1, 2, 3], "image/png".to_string(), headers);
         
         let stats = cache.stats();
         assert_eq!(stats.entry_count, 2);
@@ -528,18 +528,18 @@ mod html_extraction_tests {
     
     #[test]
     fn test_extract_link_icon() {
-        let html = r#"<!DOCTYPE html><html><head><link rel="icon" href="favicon.ico"></head><body></body></html>"#;
+        let html = r#"<!DOCTYPE html><html><head><link rel="icon" href="https://github.com/favicon.ico"></head><body></body></html>"#;
         let dom = HtmlParser::new(html).parse();
         let refs = extract_image_refs(&dom);
         
         assert_eq!(refs.len(), 1);
-        assert_eq!(refs[0].url, "favicon.ico");
+        assert_eq!(refs[0].url, "https://github.com/favicon.ico");
         assert!(matches!(refs[0].ref_type, ImageRefType::Favicon));
     }
     
     #[test]
     fn test_extract_apple_touch_icon() {
-        let html = r#"<!DOCTYPE html><html><head><link rel="apple-touch-icon" href="touch-icon.png"></head><body></body></html>"#;
+        let html = r#"<!DOCTYPE html><html><head><link rel="apple-touch-icon" href="https://github.com/apple-touch-icon.png"></head><body></body></html>"#;
         let dom = HtmlParser::new(html).parse();
         let refs = extract_image_refs(&dom);
         
@@ -549,11 +549,11 @@ mod html_extraction_tests {
     
     #[test]
     fn test_extract_base_href() {
-        let html = r#"<!DOCTYPE html><html><head><base href="/assets/"></head><body></body></html>"#;
+        let html = r#"<!DOCTYPE html><html><head><base href="https://cdn.jsdelivr.net/npm/library@1.0.0/dist/"></head><body></body></html>"#;
         let dom = HtmlParser::new(html).parse();
         let base = extract_base_href(&dom);
         
-        assert_eq!(base, Some("/assets/".to_string()));
+        assert_eq!(base, Some("https://cdn.jsdelivr.net/npm/library@1.0.0/dist/".to_string()));
     }
     
     #[test]
@@ -567,11 +567,11 @@ mod html_extraction_tests {
     
     #[test]
     fn test_extract_style_background() {
-        let html = r#"<!DOCTYPE html><html><head></head><body><div style="background-image: url(bg.png)">Content</div></body></html>"#;
+        let html = r#"<!DOCTYPE html><html><head></head><body><div style="background-image: url(https://unsplash.com/photos/bg.png)">Content</div></body></html>"#;
         let dom = HtmlParser::new(html).parse();
         let refs = extract_image_refs(&dom);
         
-        assert!(refs.iter().any(|r| r.url == "bg.png"));
+        assert!(refs.iter().any(|r| r.url == "https://unsplash.com/photos/bg.png"));
     }
 }
 
@@ -584,7 +584,7 @@ mod data_uri_tests {
         assert!(is_data_uri("data:image/png;base64,abc123"));
         assert!(is_data_uri("DATA:text/plain,hello"));
         assert!(is_data_uri("  data:image/gif;base64,R0lGODlh  "));
-        assert!(!is_data_uri("https://example.com/image.png"));
+        assert!(!is_data_uri("https://github.com/torvalds/linux/image.png"));
         assert!(!is_data_uri("image.png"));
     }
     
